@@ -101,6 +101,18 @@ go mod tidy
 # 启动服务（自动创建 data.db 并建表）
 go run cmd/server/main.go
 
+# 接口测试
+# 提交一个通知任务
+curl -X POST http://localhost:8080/api/v1/notifications \
+  -H "Content-Type: application/json" \
+  -d '{"target_url":"https://httpbin.org/post","http_method":"POST","body":"{\"key\":\"value\"}","source_system":"test"}'
+
+# 查询失败任务
+curl "http://localhost:8080/api/v1/notifications?status=FAILED"
+
+# 手动重投
+curl -X POST http://localhost:8080/api/v1/notifications/1/retry
+
 # 运行所有单元测试
 go test -v ./...
 
@@ -187,19 +199,18 @@ go tool cover -func=coverage.out
 #### 架构演进路线
 
 ```
-第一版 MVP                    成长期                      规模期
-─────────────────────         ─────────────────────       ─────────────────────
-单体 Go 服务                  引入 Redis ZSET             引入 Kafka/RocketMQ
-+ SQLite/MySQL 扫表重试   →   延迟队列                →   接入层与投递层
-+ 后台 goroutine 调度         减少 DB 扫表压力            彻底解耦为独立微服务
-                                                          + DLQ 死信队列
-                                                          + 告警平台
+第一版 MVP                       规模期
+─────────────────────         ───────────────────── 
+单体 Go 服务                  引入 Kafka/RocketMQ
++ SQLite/MySQL 扫表重试   →   接入层与投递层
++ 后台 goroutine 调度         彻底解耦为独立微服务
+                              + DLQ 死信队列
+                              + 告警平台
 ```
 
 | 阶段 | 触发条件 | 演进动作 |
 |------|---------|---------|
 | **MVP** | 日通知量 < 10 万 | 单体服务 + DB 扫表，运维成本最低 |
-| **成长期** | 扫表延迟 > 1s 或 DB CPU > 70% | 引入 Redis ZSET 延迟队列，减少 DB 扫表压力 |
 | **规模期** | 日通知量 > 1000 万 | 引入 Kafka/RocketMQ，接入层与投递层彻底解耦为独立微服务 |
 
 #### 关于开源中间件的使用
